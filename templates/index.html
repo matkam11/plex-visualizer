@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+text {
+  font: 10px sans-serif;
+}
+
+div.tooltip {
+    color: white;
+    position: absolute;
+    text-align: left;
+    width: 130px;
+    height: 060px;
+    padding: 2px;
+    font: 10px sans-serif;
+    background: #333;
+    border: 1px solid lightgrey;
+    border-radius: 5px;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+
+</style>
+<body>
+<div id="vis"> </div>
+<button id="Restore">Restore</button>
+<button id="splitGenre">Split Genres</button>
+<button id="splitYear">Split Years</button>
+<button id="oneGroup">Group Together</button>
+<button id="removeWatched">Remove Watched</button>
+<button id="removeWatched">Remove Watched</button>
+<a href="/login">Login</a>
+<a href="/logout">Logout</a>
+</body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script> var user_data = "..{{ data }}"</script>
+<script src="../js/bubblechart.js"></script>

@@ -1,12 +1,15 @@
 import os
 import json
+import tempfile
 from sqlite3 import dbapi2 as sqlite3
 from flask import Flask, request, session, g, redirect, url_for, abort, \
-     render_template, flash
+     render_template, flash, send_from_directory
 
+from plexapi.myplex import MyPlexAccount
 
 # create our little application :)
 app = Flask(__name__)
+app.secret_key = 'A0Zr98j/3yX R~XHH!jmN]LWX/,adsa123edaadas?RT'
 
 def connect_db():
     """Connects to the specific database."""
@@ -29,9 +32,20 @@ def close_db(error):
     if hasattr(g, 'sqlite_db'):
         g.sqlite_db.close()
 
+@app.route('/js/<path:path>')
+def send_js(path):
+    return send_from_directory('js', path)
+
+@app.route('/data/<path:path>')
+def send_data(path):
+    return send_from_directory('data', path)
 
 @app.route('/')
 def show_entries():
+    username = ""
+    if session.get('logged_in'):
+        username = session['username']
+        print("Logged In!")
     db = get_db()
     cur = db.execute("SELECT * FROM 'session_history_metadata' LEFT JOIN session_history ON session_history_metadata.id=session_history.id  where session_history_metadata.media_type='movie'")
     entries = cur.fetchall()
@@ -39,32 +53,44 @@ def show_entries():
     movies["children"] = []
 #    print entries
     temp_movies = {}
-    print len(entries)
     for entry in entries:
         genre = entry["genres"].split(';')[0]
         if genre == "":
            genre = "None"
-        if genre not in temp_movies.keys():
-            # print "Adding " + genre
-            temp_movies[genre] = {}
-        if entry["title"] not in temp_movies[genre].keys():
-            print "Adding " +  entry["title"] + " to " + genre
-            temp_movies[genre][entry["title"]] = 0
-        temp_movies[genre][entry["title"]] += float(entry["stopped"] - entry["started"])
-    final_movies = []
-    for genre in temp_movies:
-        genre_children = []
-        print genre
-        print len(temp_movies[genre].keys())
-        for movie in temp_movies[genre].keys():
-            genre_children.append({"name": movie,
-                                   "size": temp_movies[genre][movie]})
-        movies["children"].append({"name": genre,
-                                   "children": genre_children})
-    with open('data.json', 'w') as outfile:
-        json.dump(movies, outfile, indent=4)
 
-    return render_template('show_entries.html', entries=final_movies)
+        if entry["title"] not in temp_movies.keys():
+            temp_movies[entry["title"]] = {}
+            temp_movies[entry["title"]]["size"] = 0
+            temp_movies[entry["title"]]["year"] = entry["year"]
+            temp_movies[entry["title"]]["genre"] = genre
+            temp_movies[entry["title"]]["watch"] = "False"
+        if username == entry["user"]:
+            temp_movies[entry["title"]]["watch"] = "True"
+        temp_movies[entry["title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
+    final_movies = []
+
+    for movie in temp_movies.keys():
+        movies["children"].append({"name":  movie,
+                                   "size":  temp_movies[movie]["size"],
+                                   "genre": temp_movies[movie]["genre"],
+                                   "year":  temp_movies[movie]["year"],
+                                   "watch": temp_movies[movie]["watch"]})
+    if session.get('logged_in'):
+        if "datafile" in session:
+            datafile = session['datafile']
+        else:
+            fs,datafile =  tempfile.mkstemp(dir='data/', suffix=".json")
+            with open(datafile, 'w') as outfile:
+                json.dump(movies, outfile, indent=4)
+            datafile = datafile.replace("/root/plex_cluster/plex_vis","")
+            session['datafile'] = datafile
+    else:
+            fs,datafile =  tempfile.mkstemp(dir='data/', suffix=".json")
+            with open(datafile, 'w') as outfile:
+                json.dump(movies, outfile, indent=4)
+            datafile = datafile.replace("/root/plex_cluster/plex_vis","")
+            session['datafile'] = datafile
+    return render_template('index.html',data=datafile)
 
 
 @app.route('/add', methods=['POST'])
@@ -83,14 +109,11 @@ def add_entry():
 def login():
     error = None
     if request.method == 'POST':
-        if request.form['username'] != app.config['USERNAME']:
-            error = 'Invalid username'
-        elif request.form['password'] != app.config['PASSWORD']:
-            error = 'Invalid password'
-        else:
-            session['logged_in'] = True
-            flash('You were logged in')
-            return redirect(url_for('show_entries'))
+        account = MyPlexAccount.signin(request.form['username'], request.form['password'])
+        session['username'] = account.username
+        session['logged_in'] = True
+        flash('You were logged in')
+        return redirect(url_for('show_entries'))
     return render_template('login.html', error=error)
 
 @app.route('/logout')

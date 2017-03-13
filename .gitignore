@@ -1,1 +1,3 @@
 plexpy.db
+data/*
+*.pyc
