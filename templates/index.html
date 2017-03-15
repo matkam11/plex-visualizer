@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
+<link rel="stylesheet" href="../css/d3.slider.css" />
 <style>
 
 text {
@@ -21,19 +22,32 @@ div.tooltip {
     pointer-events: none;
 }
 
+div.slider {
+    margin: 50px 0px 50px 0px;
+    height: 10px;
+}
+
+
 
 </style>
 <body>
-<div id="vis"> </div>
-<button id="Restore">Restore</button>
-<button id="splitGenre">Split Genres</button>
-<button id="splitYear">Split Years</button>
-<button id="oneGroup">Group Together</button>
-<button id="removeWatched">Remove Watched</button>
-<button id="removeWatched">Remove Watched</button>
+<div id="sliders" style="width:200px;float:left">
+    <div class="slider_header">Filter Years</div>
+    <div class="slider" id="year_slider"></div>
+    <div class="slider_header">Zoom</div>
+    <div class="slider" id="zoom_slider"></div>
+    <button id="Restore">Restore</button>
+    <button id="splitGenre">Split Genres</button>
+    <button id="splitYear">Split Years</button>
+    <button id="oneGroup">Group Together</button>
+    <button id="removeWatched">Remove Watched</button>
+    <button id="undo">Undo last action</button>
 <a href="/login">Login</a>
 <a href="/logout">Logout</a>
+</div>
+<div id="vis"> </div>
 </body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script> var user_data = "..{{ data }}"</script>
+<script src="../js/d3.slider.js"></script>
 <script src="../js/bubblechart.js"></script>

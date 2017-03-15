@@ -25,6 +25,75 @@ def get_db():
         g.sqlite_db = connect_db()
     return g.sqlite_db
 
+def get_movies(db,username):
+    movie_query = db.execute("SELECT * FROM 'session_history_metadata' LEFT JOIN session_history ON session_history_metadata.id=session_history.id  where session_history_metadata.media_type='movie'")
+    movie_entries = movie_query.fetchall()
+    movies={"name": "Movies",
+            "size": 0}
+    movies["children"] = []
+#    print movie_entries
+    temp_movies = {}
+    for entry in movie_entries:
+        genre = entry["genres"].split(';')[0]
+        if genre == "":
+           genre = "None"
+
+        if entry["title"] not in temp_movies.keys():
+            temp_movies[entry["title"]] = {}
+            temp_movies[entry["title"]]["size"] = 0
+            temp_movies[entry["title"]]["year"] = entry["year"]
+            temp_movies[entry["title"]]["genre"] = genre
+            temp_movies[entry["title"]]["watch"] = "False"
+            temp_movies[entry["title"]]["rating"] = entry["content_rating"]
+        if username == entry["user"]:
+            temp_movies[entry["title"]]["watch"] = "True"
+        temp_movies[entry["title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
+    final_movies = []
+
+    for movie in temp_movies.keys():
+        movies["children"].append({"name":   movie,
+                                   "size":   temp_movies[movie]["size"],
+                                   "genre":  temp_movies[movie]["genre"],
+                                   "year":   temp_movies[movie]["year"],
+                                   "watch":  temp_movies[movie]["watch"],
+                                   "rating": temp_movies[movie]["rating"]})
+        movies["size"] += temp_movies[movie]["size"]
+    return movies
+
+def get_tv(db,username):
+    print "Getting TV"
+    tv_query = db.execute("SELECT * FROM 'session_history_metadata' LEFT JOIN session_history ON session_history_metadata.id=session_history.id  where session_history_metadata.media_type='episode'")
+    tv_entries = tv_query.fetchall()
+    tv={"name": "TV Shows",
+            "size": 0}
+    tv["children"] = []
+#    print movie_entries
+    temp = {}
+    for entry in tv_entries:
+        genre = entry["genres"].split(';')[0]
+        if genre == "":
+           genre = "None"
+        if entry["grandparent_title"] not in temp.keys():
+            temp[entry["grandparent_title"]] = {}
+            temp[entry["grandparent_title"]]["size"] = 0
+            temp[entry["grandparent_title"]]["year"] = entry["year"]
+            temp[entry["grandparent_title"]]["genre"] = genre
+            temp[entry["grandparent_title"]]["watch"] = "False"
+            temp[entry["grandparent_title"]]["rating"] = entry["content_rating"]
+        if username == entry["user"]:
+            temp[entry["grandparent_title"]]["watch"] = "True"
+        temp[entry["grandparent_title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
+
+    for show in temp.keys():
+        tv["children"].append({"name":   show,
+                                   "size":   temp[show]["size"],
+                                   "genre":  temp[show]["genre"],
+                                   "year":   temp[show]["year"],
+                                   "watch":  temp[show]["watch"],
+                                   "rating": temp[show]["rating"]})
+        tv["size"] += temp[show]["size"]
+    return tv
+
 
 @app.teardown_appcontext
 def close_db(error):
@@ -40,56 +109,30 @@ def send_js(path):
 def send_data(path):
     return send_from_directory('data', path)
 
+@app.route('/css/<path:path>')
+def send_css(path):
+    return send_from_directory('css', path)
+
 @app.route('/')
 def show_entries():
     username = ""
     if session.get('logged_in'):
         username = session['username']
         print("Logged In!")
-    db = get_db()
-    cur = db.execute("SELECT * FROM 'session_history_metadata' LEFT JOIN session_history ON session_history_metadata.id=session_history.id  where session_history_metadata.media_type='movie'")
-    entries = cur.fetchall()
-    movies={"name": "Movies"}
-    movies["children"] = []
-#    print entries
-    temp_movies = {}
-    for entry in entries:
-        genre = entry["genres"].split(';')[0]
-        if genre == "":
-           genre = "None"
-
-        if entry["title"] not in temp_movies.keys():
-            temp_movies[entry["title"]] = {}
-            temp_movies[entry["title"]]["size"] = 0
-            temp_movies[entry["title"]]["year"] = entry["year"]
-            temp_movies[entry["title"]]["genre"] = genre
-            temp_movies[entry["title"]]["watch"] = "False"
-        if username == entry["user"]:
-            temp_movies[entry["title"]]["watch"] = "True"
-        temp_movies[entry["title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
-    final_movies = []
-
-    for movie in temp_movies.keys():
-        movies["children"].append({"name":  movie,
-                                   "size":  temp_movies[movie]["size"],
-                                   "genre": temp_movies[movie]["genre"],
-                                   "year":  temp_movies[movie]["year"],
-                                   "watch": temp_movies[movie]["watch"]})
-    if session.get('logged_in'):
         if "datafile" in session:
             datafile = session['datafile']
         else:
+            db = get_db()
+            movies =  get_movies(db, username)
+            tv = get_tv(db, username)
+            output = { "Movies": movies,"TV": tv}
             fs,datafile =  tempfile.mkstemp(dir='data/', suffix=".json")
             with open(datafile, 'w') as outfile:
-                json.dump(movies, outfile, indent=4)
+                json.dump(output, outfile, indent=4)
             datafile = datafile.replace("/root/plex_cluster/plex_vis","")
             session['datafile'] = datafile
     else:
-            fs,datafile =  tempfile.mkstemp(dir='data/', suffix=".json")
-            with open(datafile, 'w') as outfile:
-                json.dump(movies, outfile, indent=4)
-            datafile = datafile.replace("/root/plex_cluster/plex_vis","")
-            session['datafile'] = datafile
+        datafile = "/data/notLoggedIn.json"
     return render_template('index.html',data=datafile)
 
 
@@ -98,7 +141,7 @@ def add_entry():
     if not session.get('logged_in'):
         abort(401)
     db = get_db()
-    db.execute('insert into entries (title, text) values (?, ?)',
+    db.execute('insert into movie_entries (title, text) values (?, ?)',
                [request.form['title'], request.form['text']])
     db.commit()
     flash('New entry was successfully posted')
@@ -119,6 +162,8 @@ def login():
 @app.route('/logout')
 def logout():
     session.pop('logged_in', None)
+    session.pop('username', None)
+    session.pop('datafile', None)
     flash('You were logged out')
     return redirect(url_for('show_entries'))
 

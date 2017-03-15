@@ -25,13 +25,15 @@ function inArray(myArray,myValue){
 };
 
 function plex_chart() {
-  var width = 1920;
-  var height = 1080;
+  var width = 960;
+  var height = 960;
   var targetFunction = moveToCenter
+  var renderFunction = render_root
   var groupFilter = function (d) {return d.genre};
   var groupSort = function (a,b) {return d3.ascending(a,b)}
   var center = { x: width / 2, y: height / 2 };
-
+  var scaleing = .10
+  var prev_scaleing = 10
   var damper = 0.104;
 
   var globalGroups = [];
@@ -40,10 +42,10 @@ function plex_chart() {
   var svg = null;
   var bubbles = null;
   var nodes = [];
-
+  var stateHistory = [];
   var orig_nodes = null;
   function charge(d) {
-    return -Math.pow(d.radius, 2.0) / 8;
+    return -Math.pow(d.radius*scaleing, 2.0) / 8;
   }
 
   var force = d3.layout.force()
@@ -64,23 +66,40 @@ function plex_chart() {
     //.text("a simple tooltip");
 
   function deletePackage(toDelete) {
+    saveState()
     nodes = nodes.filter(function(d) {if (toDelete != groupFilter(d)) {
                                       return d
                                       }})
-    // groups = groups.filter(function(d) {if (toDelete != d.name) {
-    //                                   return d
-    //                                   }})
-    // var index = groups.indexOf(toDelete);
-    // if (index > -1) {
-    //   genres.splice(index, 1);
-    // }
     animate()
   }
 
+  function saveState() {
+      let state = {}
+      state.targetFunction = targetFunction
+      state.renderFunction = renderFunction
+      state.groupFilter = groupFilter
+      state.groupSort = groupSort
+      state.nodes = nodes
+      stateHistory.push(state)
+  }
+
+  function restore() {
+    state = stateHistory.pop()
+    targetFunction = state.targetFunction
+    renderFunction = state.renderFunction
+    groupFilter = state.groupFilter
+    groupSort = state.groupSort
+    nodes = state.nodes
+    animate()
+  }
+
+
+
   function animate() {
     // calcGenreCenters()
+    console.log(nodes)
     force.nodes(nodes)
-    render_chart()
+    renderFunction()
     force.alpha(1)
     animation()
   }
@@ -88,7 +107,8 @@ function plex_chart() {
   function getTheData(root) {
       // Get the node values
     var test = classes(root)
-    test.sort(function (a, b) { return b.size - a.size; })
+    console.log(test)
+    // test.sort(function (a, b) { return b.size - a.size; })
     return test;
   }
 
@@ -107,17 +127,30 @@ function plex_chart() {
   function groups_from_data(data) {
     var groups = []
     data.forEach(function(d) { if (!inArray(groups, groupFilter(d))) { (groups.push(groupFilter(d)))};})
-	groups.sort(groupSort)
+	  groups.sort(groupSort)
     return groups
   }
 
   function classes(root) {
-    var classes = [];
+    var classes = []
+    var movies = {}
+    var tv = {}
 
-    function recurse(name, node) {
-      if (node.children) node.children.forEach(function(child) { recurse(node.name, child); });
-      else  {classes.push({genre: node.genre,
-                           movie: node.name,
+    function group(name,node,array_to_push) {
+      array_to_push.name = node.name
+      array_to_push.value = node.size
+      array_to_push.radius = Math.pow(node.size,0.5)/20;
+      array_to_push.x = Math.random() * 900,
+      array_to_push.y= Math.random() * 800
+      children = []
+      recurse(null, node, children)
+      array_to_push.children = children;
+    }
+
+    function recurse(name, node, array_to_push) {
+      if (node.children) node.children.forEach(function(child) { recurse(node.name, child, array_to_push); });
+      else  {array_to_push.push({genre: node.genre,
+                           name: node.name,
                            value: node.size,
                            year: node.year,
                            watch: node.watch,
@@ -127,16 +160,36 @@ function plex_chart() {
       });}
     }
 
-    recurse(null, root);
-    return classes;
+    group(null, root.TV, tv)
+    group(null, root.Movies, movies)
+    console.log(tv)
+    console.log(movies)
+    // return { "Movies": movies, "TV": tv}
+    return [movies, tv]
   }
 
-  function render_chart() {
-    bubbles = svg.selectAll('g')
-      .data(nodes, function (d) { return d.movie; });
+  function expandGroup(to_expand){
+    console.log(to_expand)
+    saveState()
+    result  = nodes.filter(function(d) {console.log(d.name); if (to_expand === d.name) {
+                                      console.log(d.name + " == " + to_expand);
+                                      return d
+                                      }})
+    console.log(result)
+    nodes = result[0].children
+    console.log(nodes)
+    renderFunction = render_chart
+    animate()
+  }
+
+  function render_root() {
+     bubbles = svg.selectAll('g.node')
+      .data(nodes, function (d) {return d.name; });
 
 
     bubbles.select("circle")
+    .attr("r",function(d) { return d.radius*scaleing }).transition().duration(3).attr("r", function(d) { return d.radius*scaleing });
+
         // .style("fill", function(d) { console.log(intToRGB(groupFilter(d))); return intToRGB(groupFilter(d.genre)); })
 
     // bubbles.select("circle").style("fill", function(d) { return intToRGB(hashCode(d.genre)); });
@@ -144,16 +197,66 @@ function plex_chart() {
     // There will be one circle.bubble for each object in the nodes array.
     // Initially, their radius (r attribute) will be 0.
     bubbleEnter = bubbles.enter().append('g')
-
-
+    bubbleEnter.classed("node",true)
+    console.log(scaleing)
     bubbleEnter.append("circle")
-        .style("fill", function(d) { return intToRGB(hashCode(d.genre)); })
-        .attr("r",0).transition().duration(3).attr("r", function(d) { return d.radius; });
+        .style("fill", function(d) { return intToRGB(hashCode(d.name)); })
+        .attr("r",0).transition().duration(3).attr("r", function(d) { return d.radius*scaleing });
 
     bubbleEnter.append("text")
         .attr("dy", ".3em")
         .style("text-anchor", "middle")
-        .text(function(d) { return d.movie.substring(0, d.radius / 3); });
+        .text(function(d) { return d.name.substring(0, d.radius / 3); });
+
+    bubbleEnter.on("mouseover", function(d) {
+              div .transition()
+                  .duration(100)
+                  .style("visibility", "visible")
+                  .style("opacity", 0.9);
+              div .html(
+                      "Name: "   +d.name   +"<br/>"+
+                      "Hours Watched: "    + Math.round((d.value/60/60)*100)/100
+                  )
+                  .style("left", (d3.event.pageX) + "px")
+                  .style("top", (d3.event.pageY - 28) + "px");
+              })
+      .on("mouseout", function(){return div.style("visibility", "hidden");})
+      .on("click", function(d){ expandGroup(d.name)});
+
+
+    bubbleExit =  bubbles.exit()
+    bubbleExit.transition().duration(5).select("circle").attr("r",0)
+    bubbleExit.transition().duration(5).remove();
+  }
+
+  function render_chart() {
+    bubbles = svg.selectAll('g.node')
+      .data(nodes, function (d) { return d.name; });
+
+
+    bubbles.select("circle")
+    .attr("r",function(d) { return d.radius*scaleing }).transition().duration(3).attr("r", function(d) { return d.radius*scaleing });
+        // .style("fill", function(d) { console.log(intToRGB(groupFilter(d))); return intToRGB(groupFilter(d.genre)); })
+    bubbles.select("text")
+      .text(function(d) { return d.name.substring(0, d.radius*scaleing / 3); });
+
+
+    // bubbles.select("circle").style("fill", function(d) { return intToRGB(hashCode(d.genre)); });
+    // Create new circle elements each with class `bubble`.
+    // There will be one circle.bubble for each object in the nodes array.
+    // Initially, their radius (r attribute) will be 0.
+
+    bubbleEnter = bubbles.enter().append('g')
+    bubbleEnter.classed("node",true)
+
+    bubbleEnter.append("circle")
+        .style("fill", function(d) { return intToRGB(hashCode(d.genre)); })
+        .attr("r",0).transition().duration(3).attr("r", function(d) { return d.radius*scaleing; });
+
+    bubbleEnter.append("text")
+        .attr("dy", ".3em")
+        .style("text-anchor", "middle")
+        .text(function(d) { return d.name.substring(0, d.radius / 3); });
 
     bubbleEnter.on("mouseover", function(d) {
               div .transition()
@@ -162,7 +265,7 @@ function plex_chart() {
                   .style("opacity", 0.9);
               div .html(
                       "Genre: " +d.genre +"<br/>"+
-                      "Movie: "   +d.movie   +"<br/>"+
+                      "Name: "   +d.name   +"<br/>"+
                       "Year: " +d.year + "<br/>"+
                       "Watched: " + d.watch + "<br/>"+
                       "Hours Watched: "    + Math.round((d.value/60/60)*100)/100
@@ -192,7 +295,11 @@ function plex_chart() {
     // with `+`.
     var maxAmount = d3.max(rawData, function (d) { return +d.radius; });
     radiusScale.domain([0, maxAmount]);
+    console.log(rawData)
+    console.log(rawData.name)
+    //nodes = rawData
     nodes = getTheData(rawData);
+    console.log(nodes)
     orig_nodes = nodes;
     //calcGenreCenters();
     // Set the force's nodes to our newly created nodes array.
@@ -206,14 +313,8 @@ function plex_chart() {
       .attr('height', height);
 
     // Bind nodes data to what will become DOM elements to represent them.
-    render_chart()
-
-    // Fancy transition to make bubbles appear, ending with the
-    // correct radius
-    // bubbles.transition()
-    //   .duration(10)
-    //   .attr('r', function (d) { return d.value/1000; });
-
+    renderFunction()
+    force.start()
     // Set initial layout to single group.
     animate();
   };
@@ -280,9 +381,20 @@ function plex_chart() {
   d3.select("#oneGroup").on("click",oneGroup);
   d3.select("#Restore").on("click",Restore);
   d3.select("#removeWatched").on("click",removeWatched);
+  d3.select("#undo").on("click",restore);
+  d3.select("#year_slider").call(d3.slider().value([10, 50 ]))
+  d3.select("#zoom_slider").call(d3.slider().value(20).on("slide", function(evt, value) {
+                                prev_scaleing = scaleing;
+                                scaleing = value/50;
+                                console.log("Scale now equals:" + value)
+                                animate()
+                              }))
+
+
 
   // Group Data by Genre
   function splitGenreButton() {
+    saveState()
     groupFilter = function (d) {return d.genre};
     groupSort = function (a,b) {return d3.ascending(a,b)}
     targetFunction = moveToGenre
@@ -291,6 +403,7 @@ function plex_chart() {
   }
 
   function splitYearButton() {
+    saveState()
     groupFilter = function (d) {return d.year};
     groupSort = function (a,b) {return b-a}
     targetFunction = moveToGenre
@@ -299,6 +412,7 @@ function plex_chart() {
   }
 
   function oneGroup() {
+    saveState()
     groupFilter = function (d) {return d.genre};
     groupSort = function (a,b) {return d3.ascending(a,b)}
     targetFunction = moveToCenter
@@ -307,6 +421,7 @@ function plex_chart() {
   }
 
 function removeWatched() {
+    saveState()
     nodes = nodes.filter(function(d) {if ("False" === d.watch) {
                                   return d
                                   }})
