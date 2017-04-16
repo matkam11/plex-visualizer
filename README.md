@@ -17,6 +17,7 @@ There are many more features that I want to implement!
 
 ## Installation
 
+* Clone the repository
 * Install the requirements in a virtualenv or on your machine
     * `pip install -r requirements.txt`
 * Place a copy of your plexpy.db in data/
@@ -28,6 +29,11 @@ There are many more features that I want to implement!
     * ADMIN: The Admin user that will be able to run additional functions
 
 From here you can just execute the run_vis.sh script from the same directory to run the app! (Systemd/init.d defintions coming soon!)
+
+## Admin Interface
+There are multiple endpoints that you can hit as the ADMIN account that lets you run various operations:
+* /regen: Regenerate the cache for anyone who is not logged in. This cache gets generated automatically the first time the server is run but never again after
+* /test: For somereason not all the rating_keys in my database were correct (or the latest?) as such some of the bubbles wouldn't appear properly. Running the /test endpoint will give you an output on the console of both shows and movies that have invalid rating_keys. Navigating to those rating_keys on plexpy will  allow you to update the old entries and thus fix them.
 
 ## Screenshots
 The first view you see when you first enter the page. Lets you choose between the TV Shows and Movies on your server
