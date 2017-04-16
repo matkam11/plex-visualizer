@@ -1,6 +1,17 @@
 body {
-  font-family: "Open Sans"
+  font-family: "Open Sans";
+  background-color:#1f1f1f;
+  margin:0;
 }
+
+h1 {
+  color:#f9be03;
+}
+
+h2 {
+  color:#f9be03;
+}
+
 ul {
  list-style: none;
  line-height: 50px;
@@ -19,6 +30,10 @@ li {
 }
 .slider_div {
   padding: 10px 30px;
+}
+
+form {
+  color: 999;
 }
 
 #sliders {
