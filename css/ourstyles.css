@@ -67,3 +67,52 @@ form {
 .label {
   font-size: 14px;
 }
+
+
+#loginbox {
+ display:flex;
+ flex-direction:column;
+ align-content: center;
+ width:300px;
+ background: #3a3a3a;
+ border-radius: 3px;
+ border: 1px #444 solid;
+ padding: 20px;
+ position: absolute;
+ top: 50%;
+ left: 50%;
+ transform: translate(-50%, -50%);
+}
+
+#loginbox h1 {
+ margin: 0 0 15px 0;
+ text-align:center;
+}
+
+#loginbox input {
+ box-shadow: inset 0px 0px 2px rgba(0, 0, 0, 0.2);
+ border: 1px solid #b9b9b9;
+ border-radius: 2px;
+ color: #505050;
+ height: 26px;
+ float: left;
+ width:290px;
+ margin-bottom:15px;
+ padding-left: 8px;
+ font-size:14px;
+}
+
+#loginbox #submit {
+ background: #fff;
+ color: #505050;
+ font-size: 14px;
+ border: 1px solid #afafaf;
+ height: 30px;
+ width: 88px;
+ font-weight: 600;
+ border-radius: 0 2px 2px 0;
+ box-shadow: none;
+ float: left;
+ margin: 0 calc(50% - 44px);
+ padding: 0;
+}

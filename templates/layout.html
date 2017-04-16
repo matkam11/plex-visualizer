@@ -1,9 +1,9 @@
 <!doctype html>
 <title>Plex Visualizer</title>
-<link rel="stylesheet" type="text/css" href="{{ url_for('send_css', path='ourstyles.css') }}">
 <link rel="stylesheet" type="text/css" href="{{ url_for('send_css', path='normalize.css') }}">
+<link rel="stylesheet" type="text/css" href="{{ url_for('send_css', path='ourstyles.css') }}">
 <div class="page">
-  <h1>Plex Visualizer</h1>
+  <h1 style="text-align:center">Plex Visualizer</h1>
   {% for message in get_flashed_messages() %}
     <div class="flash">{{ message }}</div>
   {% endfor %}
