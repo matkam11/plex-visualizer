@@ -77,10 +77,15 @@
 
 .d3-slider-axis text {
     font-size: 11px;
+    fill: #999;
 }
 
 .d3-slider-vertical .d3-slider-handle {
     left: -.25em;
     margin-left: 0;
     margin-bottom: -.6em;
+}
+
+.slider_div {
+    color: #999;
 }
