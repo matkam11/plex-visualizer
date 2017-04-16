@@ -22,7 +22,7 @@ There are many more features that I want to implement!
     * `pip install -r requirements.txt`
 * Place a copy of your plexpy.db in data/
 * Copy the plex_vis.cfg.sample to the same directory (minus the .sample) and fill in the nessicary information
-    * SECRET_KEY: A randomly generated key to keep session info safe
+    * SECRET_KEY: A randomly generated key to keep session info safe. See link for more info: http://flask.pocoo.org/docs/0.12/quickstart/#sessions
     * PLEYPY_KEY: A plexpy API Key
     * PLEXPY_URL: The url to your plexpy instance. Must be accessible by the app but not necessarily by the end user
     * APP_URL: The public URL of the app (so that the frontend can make proxied requests)
