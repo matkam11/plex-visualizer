@@ -1,6 +1,8 @@
 import os
 import json
 import tempfile
+import threading
+import glob
 
 from sqlite3 import dbapi2 as sqlite3
 from flask import Flask, request, session, g, redirect, url_for, abort, \
@@ -10,50 +12,137 @@ import requests
 from plexapi.myplex import MyPlexAccount
 import json
 
+class SectionHistory:
+    def __init__(self,section_id):
+        self.section_id = section_id
+        self.lock= threading.Lock()
+
+        section_path = '{}/cache/history/{}/'.format(app.root_path,section_id)
+        if not os.path.exists(section_path):
+            os.mkdir(section_path)
+        files = glob.glob('{}*'.format(section_path))
+        if len(files) != 0:
+            history = []
+            for file in files:
+                try:
+                    with open(file, 'r') as infile:
+                        history += json.load(infile)
+                except:
+                    break
+            self.data = history
+        else:
+            self.load_history(start=0)
+
+    def load_history(self,start):
+            history = []
+            current_pos = start
+            while (True):
+                current_results = plexpy_api("get_history", section_id=self.section_id, length=1000, start=current_pos)["response"]["data"]["data"]
+                current_pos += 1000
+                history += current_results
+                if len(current_results) < 1000:
+                    break
+            self.data = history
+            self.save_history()
+
+    def save_history(self):
+        section_path = '{}/cache/history/{}/'.format(app.root_path,self.section_id)
+        current = 0
+        current_file = 0
+        json_file_size = 1000
+        left = len(self.data)
+        while left > current:
+            if left-current >= json_file_size:
+                end = current + json_file_size
+            else:
+                end = current + left-current            
+            with open("{}{}.json".format(section_path, current_file), 'w') as outfile:
+                json.dump(self.data[current:end], outfile, indent=4)
+            current = end
+            current_file = current_file + 1
+
+    def refresh_history(self):
+        section_path = '{}/cache/history/{}/'.format(app.root_path, self.section_id)
+        files = glob.glob('{}*'.format(section_path))
+        for file in files:
+            os.remove(file)
+        self.data = []
+        self.load_history(0)
+
+    def update_history(self):
+        print self.data
+
+    def get_history(self):
+        return self.data
+
 # create our little application :)
+
 app = Flask(__name__)
 app.config.from_envvar("CONFIG")
 plexpyapikey = app.config['PLEXPY_KEY']
 plexpybaseurl = app.config['PLEXPY_URL']
 app_root = app.root_path
-def connect_db():
-    """Connects to the specific database."""
-    rv = sqlite3.connect('data/plexpy.db')
-    rv.row_factory = sqlite3.Row
-    return rv
+if not os.path.exists('{}/cache/'.format(app.root_path)):
+    os.mkdir('{}/cache/'.format(app.root_path))
+if not os.path.exists('{}/cache/history'.format(app.root_path)):
+    os.mkdir('{}/cache/history'.format(app.root_path))
+if not os.path.exists('{}/cache/metadata'.format(app.root_path)):
+    os.mkdir('{}/cache/metadata'.format(app.root_path))
 
-def get_db():
-    """Opens a new database connection if there is none yet for the
-    current application context.
-    """
-    if not hasattr(g, 'sqlite_db'):
-        g.sqlite_db = connect_db()
-    return g.sqlite_db
+def get_libraries():
+    return plexpy_api("get_library_names")["response"]["data"]
 
-def get_movies(db,username):
-    movie_query = db.execute("SELECT * FROM 'session_history_metadata' LEFT JOIN session_history ON session_history_metadata.id=session_history.id  where session_history_metadata.media_type='movie'")
-    movie_entries = movie_query.fetchall()
+def plexpy_api(cmd, **kwargs):
+    url = plexpybaseurl + "api/v2?apikey=" + plexpyapikey + "&cmd=" + cmd 
+    for key in kwargs:
+        url += "&{}={}".format(key, kwargs[key])
+    print(url)
+    r = requests.get(url)
+    return r.json()
+
+def get_movies(username, regen=False):
+    libraries = get_libraries()
+    movie_sections=[]
+    for movie_lib in app.config["MOVIE_LIBRARIES"].split(','):
+        for library in libraries:
+            if movie_lib == library["section_name"]:
+                movie_sections.append(library["section_id"])
+    history = []
+    for section in movie_sections:
+        with app.app_context():
+            section_history =  SectionHistory(section)
+            if regen:
+                section_history.refresh_history()
+            history += section_history.get_history()
+    del section_history
     movies={"name": "Movies",
             "size": 0}
     movies["children"] = []
-#    print movie_entries
     temp_movies = {}
-    for entry in movie_entries:
-        genre = entry["genres"].split(';')[0]
-        if genre == "":
-           genre = "None"
+    all_history = len(history)
+    while (all_history > 0):
+        if (all_history > 1000):
+            end = 1000
+        else:
+            end = all_history
+        for entry in history[0:end]:
+            if entry["state"] == None:
+                if entry["full_title"] not in temp_movies.keys():
+                    temp_movies[entry["full_title"]] = {}
+                    temp_movies[entry["full_title"]]["size"] = 0
+                    temp_movies[entry["full_title"]]["year"] = entry["year"]
+                    temp_movies[entry["full_title"]]["watch"] = False
+                    temp_movies[entry["full_title"]]["key"] = entry["rating_key"]
+                    with app.app_context():
+                        temp_movies[entry["full_title"]]["genre"] = get_genres(entry["rating_key"])[0]
+                if username == entry["user"]:
+                    temp_movies[entry["full_title"]]["watch"] = True
+                temp_movies[entry["full_title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
+        all_history = all_history - 1000
+        del history[0:end]
 
-        if entry["title"] not in temp_movies.keys():
-            temp_movies[entry["title"]] = {}
-            temp_movies[entry["title"]]["size"] = 0
-            temp_movies[entry["title"]]["year"] = entry["year"]
-            temp_movies[entry["title"]]["genre"] = genre
-            temp_movies[entry["title"]]["watch"] = False
-            temp_movies[entry["title"]]["key"] = entry["rating_key"]
-        if username == entry["user"]:
-            temp_movies[entry["title"]]["watch"] = True
-        temp_movies[entry["title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
     final_movies = []
+    del history
 
     for movie in temp_movies.keys():
         movies["children"].append({"name":   movie,
@@ -65,28 +154,49 @@ def get_movies(db,username):
         movies["size"] += temp_movies[movie]["size"]
     return movies
 
-def get_tv(db,username):
+
+def get_tv(username, regen=False):
     print "Getting TV"
-    tv_query = db.execute("SELECT * FROM 'session_history_metadata' LEFT JOIN session_history ON session_history_metadata.id=session_history.id  where session_history_metadata.media_type='episode'")
-    tv_entries = tv_query.fetchall()
+    libraries = get_libraries()
+    tv_sections=[]
+    for tv_lib in app.config["TV_LIBRARIES"].split(','):
+        for library in libraries:
+            if tv_lib == library["section_name"]:
+                tv_sections.append(library["section_id"])
+    history = []
+    for section in tv_sections:
+        section_history =  SectionHistory(section)
+        if regen:
+            section_history.refresh_history()
+        history += section_history.get_history()
+    del section_history
     tv={"name": "TV Shows",
             "size": 0}
     tv["children"] = []
     temp = {}
-    for entry in tv_entries:
-        genre = entry["genres"].split(';')[0]
-        if genre == "":
-           genre = "None"
-        if entry["grandparent_title"] not in temp.keys():
-            temp[entry["grandparent_title"]] = {}
-            temp[entry["grandparent_title"]]["size"] = 0
-            temp[entry["grandparent_title"]]["year"] = entry["year"]
-            temp[entry["grandparent_title"]]["genre"] = genre
-            temp[entry["grandparent_title"]]["watch"] = False
-            temp[entry["grandparent_title"]]["key"] = entry["grandparent_rating_key"]
-        if username == entry["user"]:
-            temp[entry["grandparent_title"]]["watch"] = True
-        temp[entry["grandparent_title"]]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
+    all_history = len(history)
+    count = 0
+    while (all_history > 0):
+        if (all_history > 1000):
+            end = 1000
+        else:
+            end = all_history
+        for entry in history[0:end]:
+            count = count + 1
+            title = entry["full_title"].split('-')[0].strip()
+            if entry["state"] == None:
+                if title not in temp.keys():
+                    temp[title] = {}
+                    temp[title]["size"] = 0
+                    temp[title]["year"] = entry["year"]
+                    temp[title]["genre"] = get_genres(entry["rating_key"])[0]
+                    temp[title]["watch"] = False
+                    temp[title]["key"] = entry["grandparent_rating_key"]
+                if username == entry["user"]:
+                    temp[title]["watch"] = True
+                temp[title]["size"] += float(entry["stopped"] - entry["started"]) - float(entry["paused_counter"])
+        all_history = all_history - 1000
+        del history[0:end]
 
     for show in temp.keys():
         tv["children"].append({"name":   show,
@@ -98,12 +208,35 @@ def get_tv(db,username):
         tv["size"] += temp[show]["size"]
     return tv
 
+def get_metadata(rating_key):
+    json_file = '{}/cache/metadata/{}/{}.json'.format(app.root_path, str(rating_key)[0], rating_key)
+    if not os.path.exists('{}/cache/metadata/{}/'.format(app.root_path, str(rating_key)[0])):
+        os.mkdir('{}/cache/metadata/{}/'.format(app.root_path, str(rating_key)[0]))
+    if os.path.isfile(json_file):
+        with open(json_file, 'r') as infile:
+            data = json.load(infile)
+    else:
+        data = load_metadata(rating_key)
+        save_metadata(data, rating_key)
+    return data
 
-@app.teardown_appcontext
-def close_db(error):
-    """Closes the database again at the end of the request."""
-    if hasattr(g, 'sqlite_db'):
-        g.sqlite_db.close()
+
+def load_metadata(ratingkey):
+    result = plexpy_api("get_metadata", rating_key=ratingkey)["response"]
+    if result["result"] != "success":
+        return None
+    return result["data"]["metadata"]
+
+def save_metadata(data, rating_key):
+    json_file = '{}/cache/metadata/{}/{}.json'.format(app.root_path,str(rating_key)[0],rating_key)
+    with open(json_file, 'w') as outfile:
+        json.dump(data, outfile, indent=4)
+
+def get_genres(rating_key):
+   meta = get_metadata(rating_key)
+   if meta == None or len(meta["genres"]) == 0:
+       return ["None"]
+   return meta["genres"]
 
 @app.route('/js/<path:path>')
 def send_js(path):
@@ -119,17 +252,16 @@ def send_css(path):
 
 @app.route('/')
 def show_entries():
+    get_libraries()
     username = ""
     if session.get('logged_in'):
         username = session['username']
         print("Logged In!")
         if "datafile" in session and os.path.isfile(app.root_path + session['datafile']):
-            print "datafile exists"
             datafile = session['datafile']
         else:
-            db = get_db()
-            movies =  get_movies(db, username)
-            tv = get_tv(db, username)
+            movies =  get_movies(username)
+            tv = get_tv(username)
             output = { "loggedIn": True, "Movies": movies,"TV": tv}
             fs,datafile =  tempfile.mkstemp(dir='data/', suffix=".json")
             with open(datafile, 'w') as outfile:
@@ -148,9 +280,8 @@ def regen(force=False):
     username = ""
     if (session.get('logged_in') and session['username'] == app.config["ADMIN"]) or force:
         print("Logged In!")
-        db = get_db()
-        movies =  get_movies(db, username)
-        tv = get_tv(db, username)
+        movies =  get_movies(username, regen=True)
+        tv = get_tv(username, regen=True)
         output = { "loggedIn": False, "Movies": movies,"TV": tv}
         datafile = app.root_path + "/data/notLoggedIn.json"
         with open(datafile, 'w') as outfile:
